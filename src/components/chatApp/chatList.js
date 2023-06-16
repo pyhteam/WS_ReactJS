@@ -1,28 +1,24 @@
+import { UserAddOutlined, UsergroupAddOutlined } from '@ant-design/icons';
+import { Alert, Button, Form, Input, Modal } from 'antd';
 import React, { useEffect, useState } from "react";
-import './chatApp.css';
-import { useHistory, Link, useLocation } from 'react-router-dom';
-import { UsergroupAddOutlined , UserAddOutlined, DeleteFilled, EditFilled, CloseOutlined, SearchOutlined} from '@ant-design/icons';
-import { Button, Input, Form, Modal, Alert} from 'antd';
+import { useHistory } from 'react-router-dom';
 import styled from 'styled-components';
+import './chatApp.css';
 
 import {
-    MDBContainer,
-    MDBRow,
-    MDBCol,
+    MDBBtn,
     MDBCard,
     MDBCardBody,
-    MDBIcon,
-    MDBBtn,
-    MDBTypography,
-    MDBTextArea,
-    MDBCardHeader, MDBInput,
+    MDBCol,
+    MDBInput,
+    MDBTypography
 } from "mdb-react-ui-kit";
 
 export default function ChatList({ handleClickMess, userList, selectedUser }) {
     const [socket, setSocket] = useState(null);
     const history = useHistory();
     // const location = useLocation();
-    const [users, setUsers] = useState(userList);
+
     const [isChecked, setIsChecked] = useState(false); // Thêm state để lưu trữ trạng thái của checkbox
     const [roomName, setRoomName] = useState(""); // Thêm state để lưu trữ tên phòng chat mới
     const [searchQuery, setSearchQuery] = useState("");
@@ -31,6 +27,7 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
     const [isModalJoinRoomOpen, setisModalJoinRoomOpen] = useState(false);
     //add groups chat
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const API_URL = "ws://140.238.54.136:8080/chat/chat";
 
     const showModalJoinRoom = () => {
         setisModalJoinRoomOpen(true);
@@ -52,11 +49,14 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
     // const [selectedUser, setSelectedUser] = useState(null);
 
 
-    //
+    // if search null => show all user
     useEffect(() => {
-        console.log(userList); // Đảm bảo danh sách người dùng được cập nhật
-        setUsers(userList);
-    }, [userList]);
+        if (searchQuery === "") {
+            setSearchResults(userList);
+        }
+    }, [searchQuery, userList]);
+
+
 
     const handleLogout = () => {
         //Gửi yêu cầu đăng xuất đến server WebSocket
@@ -74,9 +74,13 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
     };
 
     useEffect(() => {
-        // Khởi tạo kết nối với server qua websocket
-        const socket = new WebSocket("ws://140.238.54.136:8080/chat/chat");
+        onLoad();
+    }, []);
 
+
+    const onLoad = () => {
+        // Khởi tạo kết nối với server qua websocket
+        const socket = new WebSocket(API_URL);
         socket.addEventListener("open", () => {
             console.log("WebSocket connection established.");
             const username = sessionStorage.getItem('user');
@@ -84,15 +88,15 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
 
             // Gửi message RE_LOGIN để đăng nhập lại với thông tin user và code
             socket.send(JSON.stringify({
-                    action: "onchat",
+                action: "onchat",
+                data: {
+                    event: "RE_LOGIN",
                     data: {
-                        event: "RE_LOGIN",
-                        data: {
-                            user: username,
-                            code: code,
-                        }
+                        user: username,
+                        code: code,
                     }
                 }
+            }
             ));
 
             socket.onmessage = (event) => {
@@ -108,70 +112,112 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
         // Đóng kết nối khi component unmount
         return () => {
             socket.close();
-
         };
-    }, []);
-
-    // join rooms
-    const handleJoinRoomOk = () => {
-        const roomName = document.getElementById('roomName').value;
-        debugger;
-        if (roomName && socket) {
-            // Gửi yêu cầu tạo phòng đến server WebSocket
-            const requestData = {
-                action: "onchat",
-                data: {
-                  event: "JOIN_ROOM",
-                  data: {
-                    name: roomName
-                  }
-                }
-            };
-            // Gửi requestData tới server WebSocket
-            socket.send(JSON.stringify(requestData));
-        }
-        form.resetFields();
-        setisModalJoinRoomOpen(false);
-    };
+    }
     // create room
-    const handleOk = () => {
+    const createRoom = () => {
+        console.log("create room");
+
         const roomName = document.getElementById('roomName').value;
-        if (roomName && socket) {
-            // Gửi yêu cầu tạo phòng đến server WebSocket
-            const requestData = {
-                "action": "onchat",
-                "data": {
-                "event": "CREATE_ROOM",
-                "data": {
-                "name": roomName
-                    }
+        // login after create room
+        login();
+        // Gửi message RE_LOGIN để đăng nhập lại với thông tin user và code
+        socket.send(JSON.stringify({
+            action: "onchat",
+            data: {
+                event: "CREATE_ROOM",
+                data: {
+                    name: roomName
                 }
-            };
-
-            // Gửi requestData tới server WebSocket
-            socket.send(JSON.stringify(requestData));
+            }
         }
-        form.resetFields();
-        setIsModalOpen(false);
-        <Alert message="Success Tips" type="success" showIcon />
-    };
+        ));
 
-    const handleCheckboxChange = (event) => {
-        setIsChecked(event.target.checked);
-    };
+        socket.onmessage = (event) => {
+            const response = JSON.parse(event.data);
+            console.log(response);
+            if(response.status === 'success' && response.event === 'CREATE_ROOM'){
+                alert("Tạo phòng thành công");
+                const room = {
+                    id: response.data.id,
+                    name: response.data.name,
+                    type: 1,
+                    // time now
+                    actionTime:  new Date().toLocaleString(),
+                };
+                setSearchResults([...searchResults, room]);
 
-    const handleRoomNameChange = (event) => {
-        setRoomName(event.target.value);
-    };
+                // hide modal
+                form.resetFields();
+                setIsModalOpen(false);
+            }
 
+        }
+    }
+
+    // join room
+    const joinRoom = () => {
+        console.log("join room");
+        const roomName = document.getElementById('roomName').value;
+        console.log(roomName);
+        // login after create room
+        login();
+        // Gửi message RE_LOGIN để đăng nhập lại với thông tin user và code
+        socket.send(JSON.stringify({
+            action: "onchat",
+            data: {
+                event: "JOIN_ROOM",
+                data: {
+                    name: roomName
+                }
+            }
+        }
+        ));
+
+        socket.onmessage = (event) => {
+            const response = JSON.parse(event.data);
+            console.log(response);
+            if (response.status === 'success' && response.event === 'CREATE_ROOM') {
+                alert("Join phòng thành công");
+                const room = {
+                    id: response.data.id,
+                    name: response.data.name,
+                    type: 1,
+                    // time now
+                    actionTime: new Date().toLocaleString(),
+                };
+                setSearchResults([...searchResults, room]);
+
+                // hide modal
+                form.resetFields();
+                setIsModalOpen(false);
+            }
+
+        }
+    }
+
+    const login = () =>{
+        // re login
+        socket.send(JSON.stringify({
+            action: "onchat",
+            data: {
+                event: "LOGIN",
+                data: {
+                    user: sessionStorage.getItem('user'),
+                    pass: sessionStorage.getItem('pass'),
+                }
+            }
+        }
+        ));
+    }
 
 
     const handleSearch = () => {
         // Tìm kiếm tin nhắn trong danh sách tin nhắn dựa trên searchQuery
-        const results = users.filter((user) =>
+        const results = userList.filter((user) =>
             user.name.toLowerCase().includes(searchQuery.toLowerCase())
         );
-        
+
         setSearchResults(results);
     };
 
@@ -215,12 +261,12 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
                         className="rounded-circle d-flex align-self-center me-3 shadow-1-strong"
                         width="50"
                     />
-                    <div className="pt-1" style={{marginTop: '5px'}}>
+                    <div className="pt-1" style={{ marginTop: '5px' }}>
                         <h4 className="fw-bold font mb-0">{sessionStorage.getItem('user')}</h4>
                     </div>
                 </div>
-                <MDBBtn style={{height: '45px'}}
-                        className='mt-2 gradient-custom-3' size='lg' onClick={handleLogout}>Đăng Xuất</MDBBtn>
+                <MDBBtn style={{ height: '45px' }}
+                    className='mt-2 gradient-custom-3' size='lg' onClick={handleLogout}>Đăng Xuất</MDBBtn>
             </a>
             <MDBCard>
                 <MDBCardBody>
@@ -230,59 +276,59 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
-                        <MDBBtn 
+                        <MDBBtn
                             onClick={handleSearch}
-                            >   
+                        >
                             Tìm kiếm
                         </MDBBtn>
                         <ButtonAddFriendStyled>
                             <Button
                                 type="primary"
                                 size='large'
-                                icon={<UserAddOutlined />} 
-                                className='join-room' 
+                                icon={<UserAddOutlined />}
+                                className='join-room'
                                 onClick={showModalJoinRoom}>
                             </Button>
                             <Modal
                                 title='Join Room'
                                 open={isModalJoinRoomOpen}
-                                onOk={handleJoinRoomOk}
+                                onOk={joinRoom}
                                 onCancel={handleJoinRoomCancel}
                             >
                                 <Form form={form} layout='vertical'>
-                                  <Form.Item label='' name='name'>
-                                    <Input
-                                        type='text'
-                                        id="roomName"
-                                        value={roomName}
-                                        placeholder='Enter room name ' />
-                                  </Form.Item>
+                                    <Form.Item label='' name='name'>
+                                        <Input
+                                            type='text'
+                                            id="roomName"
+                                            value={roomName}
+                                            placeholder='Enter room name ' />
+                                    </Form.Item>
                                 </Form>
                             </Modal>
                         </ButtonAddFriendStyled>
                         <ButtonStyled >
-                          <Button
-                              type="primary"
-                              size='large'
-                              icon={<UsergroupAddOutlined />} 
-                              className='add-room' 
-                              onClick={showModal}
-                              >
+                            <Button
+                                type="primary"
+                                size='large'
+                                icon={<UsergroupAddOutlined />}
+                                className='add-room'
+                                onClick={showModal}
+                            >
                             </Button>
                             <Modal
                                 title='Create New Room'
                                 open={isModalOpen}
-                                onOk={handleOk}
+                                onOk={createRoom}
                                 onCancel={handleCancel}
                             >
                                 <Form form={form} layout='vertical'>
-                                  <Form.Item label='Room name' name='name'>
-                                    <Input
-                                        type='text'
-                                        id="roomName"
-                                        value={roomName}
-                                        placeholder='Enter room name ' />
-                                  </Form.Item>
+                                    <Form.Item label='Room name' name='name'>
+                                        <Input
+                                            type='text'
+                                            id="roomName"
+                                            value={roomName}
+                                            placeholder='Enter room name ' />
+                                    </Form.Item>
                                 </Form>
                             </Modal>
                         </ButtonStyled>
@@ -299,8 +345,8 @@ export default function ChatList({ handleClickMess, userList, selectedUser }) {
                             <label className="form-check-label" htmlFor="flexCheckDefault">Room</label>
                         </div> */}
                     </div>
-                    
-                    <MDBTypography listUnStyled className="mb-0" style={{height: "415px", overflow: "scroll"}}>
+
+                    <MDBTypography listUnStyled className="mb-0" style={{ height: "415px", overflow: "scroll" }}>
                         <ul className="list-group list-group-light list-group-small">
                             {searchResults.map((user, index) => (
                                 <li key={index}
